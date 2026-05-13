@@ -5,7 +5,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from core.db import get_session
 from crud import crud_category
-from schemas import CategoryCreate, CategoryPublic
+from schemas import CategoryCreate, CategoryPublic, CategoryPublicWithProducts
 
 router = APIRouter()
 
@@ -30,7 +30,7 @@ async def get_all_categories_list(
     categories = await crud_category.get_all_categories(session=session)
     return categories
 
-@router.get("/{category_id}", response_model=CategoryPublic)
+@router.get("/{category_id}", response_model=CategoryPublicWithProducts)
 async def get_category_details(
     category_id: int,
     session: AsyncSession = Depends(get_session)

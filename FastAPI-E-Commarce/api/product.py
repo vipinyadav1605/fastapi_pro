@@ -28,13 +28,31 @@ async def create_new_product(
 @router.get("/", response_model=List[ProductPublic])
 async def get_all_products_list(
     session: AsyncSession = Depends(get_session),
+    search: str | None = Query(default=None, description="Search product name or description."),
+    category_id: int | None = Query(default=None, description="Filter by category id."),
+    min_price: float | None = Query(default=None, ge=0),
+    max_price: float | None = Query(default=None, ge=0),
+    brand: str | None = Query(default=None),
+    availability: str | None = Query(default=None, pattern="^(in_stock|out_of_stock)$"),
+    sort_by: str = Query(default="newest", pattern="^(newest|price_asc|price_desc|name|stock)$"),
+    include_inactive: bool = Query(default=False),
     *,
-    _: Annotated[User, Depends(get_current_user)]
+    current_user: Annotated[User, Depends(get_current_user)]
 ):
     """
     Get a list of all products.
     """
-    products = await crud_product.get_all_products(session=session)
+    products = await crud_product.get_all_products(
+        session=session,
+        search=search,
+        category_id=category_id,
+        min_price=min_price,
+        max_price=max_price,
+        brand=brand,
+        availability=availability,
+        sort_by=sort_by,
+        include_inactive=include_inactive and current_user.role == "admin",
+    )
     return products
 
 @router.get( "/paginated" , response_model=List[ProductPublic]) 

@@ -2,8 +2,9 @@
 from typing import List
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from model.models import Category
+from model.models import Category, Product, Review
 from schemas import CategoryCreate
 
 async def create_category(category_data: CategoryCreate, session: AsyncSession) -> Category:
@@ -28,6 +29,11 @@ async def get_category_by_id(category_id: int, session: AsyncSession) -> Categor
     """
     Retrieves a category by its ID.
     """
-    statement = select(Category).where(Category.id == category_id)
+    statement = (
+        select(Category)
+        .where(Category.id == category_id)
+        .options(selectinload(Category.products).selectinload(Product.category))
+        .options(selectinload(Category.products).selectinload(Product.reviews).selectinload(Review.user))
+    )
     result = await session.exec(statement)
     return result.one_or_none()
