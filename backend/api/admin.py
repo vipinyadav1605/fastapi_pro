@@ -4,8 +4,9 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from core.auth import is_admin
 from core.db import get_session
-from model.models import Coupon, Order, OrderItem, Product
-from schemas import AnalyticsPublic, CouponCreate, CouponPublic
+from crud import crud_review
+from model.models import Coupon, Order, OrderItem, Product, Review
+from schemas import AnalyticsPublic, CouponCreate, CouponPublic, ReviewPublic
 
 router = APIRouter(dependencies=[Depends(is_admin())])
 
@@ -47,3 +48,16 @@ async def create_coupon(coupon_data: CouponCreate, session: AsyncSession = Depen
 async def list_coupons(session: AsyncSession = Depends(get_session)):
     result = await session.exec(select(Coupon).order_by(Coupon.id.desc()))
     return result.all()
+
+
+@router.get("/reviews", response_model=list[ReviewPublic])
+async def list_reviews(session: AsyncSession = Depends(get_session)):
+    return await crud_review.get_all_reviews(session=session)
+
+
+@router.delete("/reviews/{review_id}", status_code=204)
+async def delete_review(review_id: int, session: AsyncSession = Depends(get_session)):
+    review = await session.get(Review, review_id)
+    if review:
+        await session.delete(review)
+        await session.commit()

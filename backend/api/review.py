@@ -1,23 +1,20 @@
 # api/reviews.py
-from typing import List
+from typing import Annotated, List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from core.auth import get_current_user
 from core.db import get_session
 from crud import crud_review, crud_product
+from model.models import User
 from schemas import ReviewCreate, ReviewPublic
 
 router = APIRouter()
 
-# Note: In a real application, user_id would be extracted from a JWT token
-# after the user logs in. For this example, we'll pass it in the body
-# or as a query parameter for simplicity.
-class ReviewCreateWithUser(ReviewCreate):
-    user_id: int
-
 @router.post("/", status_code=status.HTTP_201_CREATED, response_model=ReviewPublic)
 async def create_new_review(
-    review_data: ReviewCreateWithUser,
+    review_data: ReviewCreate,
+    current_user: Annotated[User, Depends(get_current_user)],
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -33,7 +30,7 @@ async def create_new_review(
     
     new_review = await crud_review.create_review(
         review_data=review_data, 
-        user_id=review_data.user_id, 
+        user_id=current_user.id,
         session=session
     )
     return new_review

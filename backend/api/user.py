@@ -31,7 +31,10 @@ async def create_new_user(
             detail="A user with this username already exists.",
         )
     
-    new_user = await crud_user.create_user(user_data=user_data, session=session)
+    # Public signup is customer-only. Admin users should be created through
+    # trusted back-office tooling or seed scripts, never by client input.
+    customer_data = user_data.model_copy(update={"role": "customer"})
+    new_user = await crud_user.create_user(user_data=customer_data, session=session)
     return new_user
 
 @router.get("/{user_id}", response_model=UserPublic)

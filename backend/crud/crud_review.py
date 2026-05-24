@@ -3,6 +3,7 @@ from typing import List
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from sqlalchemy.orm import selectinload
 from model.models import Review
 from schemas import ReviewCreate
 
@@ -16,13 +17,31 @@ async def create_review(review_data: ReviewCreate, user_id: int, session: AsyncS
     
     session.add(db_review)
     await session.commit()
-    await session.refresh(db_review)
-    return db_review
+    statement = (
+        select(Review)
+        .where(Review.id == db_review.id)
+        .options(selectinload(Review.user))
+    )
+    result = await session.exec(statement)
+    return result.one()
 
 async def get_reviews_for_product(product_id: int, session: AsyncSession) -> List[Review]:
     """
     Retrieves all reviews for a specific product.
     """
-    statement = select(Review).where(Review.product_id == product_id)
+    statement = (
+        select(Review)
+        .where(Review.product_id == product_id)
+        .options(selectinload(Review.user))
+    )
+    result = await session.exec(statement)
+    return result.all()
+
+async def get_all_reviews(session: AsyncSession) -> List[Review]:
+    statement = (
+        select(Review)
+        .options(selectinload(Review.user))
+        .order_by(Review.id.desc())
+    )
     result = await session.exec(statement)
     return result.all()

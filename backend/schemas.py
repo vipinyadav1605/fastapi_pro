@@ -59,15 +59,36 @@ class ProductBase(SQLModel):
     status: str = "published"
     is_active: bool = True
 
+class ProductImagePublic(SQLModel):
+    id: int
+    image_url: str
+    sort_order: int
+
 # Properties for creating a new product (input)
 class ProductCreate(ProductBase):
     category_id: int
+    image_urls: List[str] = []
+
+
+class ProductUpdate(SQLModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    price: Optional[float] = None
+    stock: Optional[int] = None
+    image_url: Optional[str] = None
+    brand: Optional[str] = None
+    sku: Optional[str] = None
+    tags: Optional[str] = None
+    status: Optional[str] = None
+    is_active: Optional[bool] = None
+    category_id: Optional[int] = None
 
 # Public model for a product, including nested category and review info
 class ProductPublic(ProductBase):
     id: int
     category: CategoryPublic
     reviews: List[ReviewPublic] = []
+    images: List[ProductImagePublic] = []
 
 # To avoid circular imports, we can create specific models for nested data
 # that don't have their own nested relationships.
@@ -89,7 +110,7 @@ class OrderResponse(SQLModel):
     status: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class CartItemCreate(SQLModel):
@@ -119,6 +140,14 @@ class CheckoutCreate(SQLModel):
     payment_method: str = "cash_on_delivery"
     card_last4: Optional[str] = None
     coupon_code: Optional[str] = None
+
+
+class CheckoutPreview(SQLModel):
+    subtotal: float
+    discount_amount: float
+    tax_amount: float
+    shipping_amount: float
+    total_amount: float
 
 
 class OrderItemPublic(SQLModel):

@@ -3,6 +3,10 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from sqlmodel import Field, Relationship, SQLModel
 
+def utc_now_naive() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     username: str = Field(index=True, unique=True)
@@ -47,6 +51,18 @@ class Product(SQLModel, table=True):
     cart_items: List["CartItem"] = Relationship(back_populates="product")
     order_items: List["OrderItem"] = Relationship(back_populates="product")
     wishlist_items: List["WishlistItem"] = Relationship(back_populates="product")
+    images: List["ProductImage"] = Relationship(back_populates="product")
+
+
+class ProductImage(SQLModel, table=True):
+    __tablename__ = "product_images"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    image_url: str
+    sort_order: int = Field(default=0)
+    product_id: int = Field(foreign_key="product.id")
+
+    product: Product = Relationship(back_populates="images")
 
 class Review(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -89,7 +105,7 @@ class Order(SQLModel, table=True):
     payment_method: str
     payment_status: str = Field(default="pending")
     shipping_address: str
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=utc_now_naive)
 
     user_id: int = Field(foreign_key="user.id")
 
@@ -165,7 +181,7 @@ class Notification(SQLModel, table=True):
     title: str
     message: str
     is_read: bool = Field(default=False, index=True)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=utc_now_naive)
 
     user_id: int = Field(foreign_key="user.id")
     user: User = Relationship(back_populates="notifications")

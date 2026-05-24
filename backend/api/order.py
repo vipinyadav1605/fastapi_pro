@@ -9,12 +9,65 @@ from core.auth import get_current_user, is_admin
 from core.db import get_session
 from crud import crud_account, crud_cart, crud_order
 from model.models import Coupon, User
-from schemas import CheckoutCreate, OrderPublic, OrderStatusUpdate
+from schemas import CheckoutCreate, CheckoutPreview, OrderPublic, OrderStatusUpdate
 
 router = APIRouter()
 
 PAYMENT_METHODS = {"cash_on_delivery", "card", "bank_transfer"}
 ORDER_STATUSES = {"placed", "paid", "processing", "shipped", "delivered", "cancelled"}
+
+
+async def calculate_checkout_totals(
+    *,
+    cart_items,
+    coupon_code: str | None,
+    session: AsyncSession,
+) -> dict[str, float]:
+    subtotal = 0.0
+    for item in cart_items:
+        if not item.product.is_active or item.product.stock < item.quantity:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{item.product.name} is unavailable or does not have enough stock.",
+            )
+        subtotal += round(item.quantity * item.product.price, 2)
+
+    discount_amount = 0.0
+    if coupon_code:
+        result = await session.exec(select(Coupon).where(Coupon.code == coupon_code.upper()))
+        coupon = result.one_or_none()
+        if not coupon or not coupon.is_active:
+            raise HTTPException(status_code=400, detail="Invalid coupon code.")
+        if subtotal < coupon.min_order_amount:
+            raise HTTPException(status_code=400, detail="Order does not meet coupon minimum amount.")
+        discount_amount = round(subtotal * (coupon.discount_percent / 100), 2)
+
+    tax_amount = round((subtotal - discount_amount) * 0.08, 2)
+    shipping_amount = 0 if subtotal >= 100 else 8
+    total_amount = round(subtotal - discount_amount + tax_amount + shipping_amount, 2)
+    return {
+        "subtotal": subtotal,
+        "discount_amount": discount_amount,
+        "tax_amount": tax_amount,
+        "shipping_amount": shipping_amount,
+        "total_amount": total_amount,
+    }
+
+
+@router.post("/checkout/preview", response_model=CheckoutPreview)
+async def preview_checkout(
+    checkout_data: CheckoutCreate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: AsyncSession = Depends(get_session),
+):
+    cart_items = await crud_cart.get_user_cart_items(user_id=current_user.id, session=session)
+    if not cart_items:
+        raise HTTPException(status_code=400, detail="Your cart is empty.")
+    return await calculate_checkout_totals(
+        cart_items=cart_items,
+        coupon_code=checkout_data.coupon_code,
+        session=session,
+    )
 
 
 @router.post("/checkout", response_model=OrderPublic, status_code=status.HTTP_201_CREATED)
@@ -34,15 +87,8 @@ async def checkout_cart(
         raise HTTPException(status_code=400, detail="Your cart is empty.")
 
     order_items = []
-    subtotal = 0.0
     for item in cart_items:
-        if not item.product.is_active or item.product.stock < item.quantity:
-            raise HTTPException(
-                status_code=400,
-                detail=f"{item.product.name} is unavailable or does not have enough stock.",
-            )
         line_total = round(item.quantity * item.product.price, 2)
-        subtotal += line_total
         order_items.append(
             {
                 "product_id": item.product_id,
@@ -52,19 +98,11 @@ async def checkout_cart(
             }
         )
 
-    discount_amount = 0.0
-    if checkout_data.coupon_code:
-        result = await session.exec(select(Coupon).where(Coupon.code == checkout_data.coupon_code.upper()))
-        coupon = result.one_or_none()
-        if not coupon or not coupon.is_active:
-            raise HTTPException(status_code=400, detail="Invalid coupon code.")
-        if subtotal < coupon.min_order_amount:
-            raise HTTPException(status_code=400, detail="Order does not meet coupon minimum amount.")
-        discount_amount = round(subtotal * (coupon.discount_percent / 100), 2)
-
-    tax_amount = round((subtotal - discount_amount) * 0.08, 2)
-    shipping_amount = 0 if subtotal >= 100 else 8
-    total_amount = round(subtotal - discount_amount + tax_amount + shipping_amount, 2)
+    totals = await calculate_checkout_totals(
+        cart_items=cart_items,
+        coupon_code=checkout_data.coupon_code,
+        session=session,
+    )
 
     payment_status = "pending" if checkout_data.payment_method == "cash_on_delivery" else "paid"
     order_status = "placed" if payment_status == "pending" else "paid"
@@ -75,7 +113,7 @@ async def checkout_cart(
         payment_method=checkout_data.payment_method,
         payment_status=payment_status,
         items=order_items,
-        total_amount=total_amount,
+        total_amount=totals["total_amount"],
         session=session,
     )
     order.status = order_status

@@ -2,19 +2,31 @@ from typing import List
 from sqlmodel import or_, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from model.models import Product, Review
-from schemas import ProductCreate
+from model.models import Product, ProductImage, Review
+from schemas import ProductCreate, ProductUpdate
 from sqlalchemy.orm import selectinload
 
 async def create_product(product_data: ProductCreate, session: AsyncSession) -> Product:
-    db_product = Product.model_validate(product_data)
+    image_urls = product_data.image_urls
+    db_product = Product.model_validate(product_data.model_dump(exclude={"image_urls"}))
     session.add(db_product)
+    await session.flush()
+    for index, image_url in enumerate(image_urls):
+        if image_url.strip():
+            session.add(
+                ProductImage(
+                    image_url=image_url.strip(),
+                    sort_order=index,
+                    product_id=db_product.id,
+                )
+            )
     await session.commit()
     await session.refresh(db_product)
     exec_query = (select(Product).where(
         Product.id == db_product.id).\
             options(selectinload(Product.reviews).selectinload(Review.user)).\
-                options(selectinload(Product.category))
+                options(selectinload(Product.category)).\
+                options(selectinload(Product.images))
     )
     egar_load = await session.exec(exec_query)
     return egar_load.one()
@@ -34,6 +46,7 @@ async def get_all_products(
         select(Product)
         .options(selectinload(Product.reviews).selectinload(Review.user))
         .options(selectinload(Product.category))
+        .options(selectinload(Product.images))
     )
 
     if not include_inactive:
@@ -72,10 +85,18 @@ async def get_product_by_id(product_id: int, session: AsyncSession)-> Product | 
     statement = (
         select(Product).where(Product.id == product_id)\
         .options(selectinload(Product.reviews).selectinload(Review.user))\
-        .options(selectinload(Product.category))
+        .options(selectinload(Product.category))\
+        .options(selectinload(Product.images))
     )
     result = await session.exec(statement)
     return result.one_or_none()
+
+async def update_product(product: Product, data: ProductUpdate, session: AsyncSession) -> Product:
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(product, field, value)
+    session.add(product)
+    await session.commit()
+    return await get_product_by_id(product.id, session)
 
 async def get_all_products_paginated(skip: int, limit: int, session: AsyncSession) -> List[Product]:
     """
@@ -85,6 +106,7 @@ async def get_all_products_paginated(skip: int, limit: int, session: AsyncSessio
         select(Product)
         .options(selectinload(Product.reviews).selectinload(Review.user))
         .options(selectinload(Product.category))
+        .options(selectinload(Product.images))
         .offset(skip)
         .limit(limit)
     )

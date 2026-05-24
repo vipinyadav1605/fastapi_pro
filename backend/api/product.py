@@ -5,7 +5,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from core.db import get_session
 from crud import crud_product
-from schemas import ProductCreate, ProductPublic
+from schemas import ProductCreate, ProductPublic, ProductUpdate
 
 from typing import Annotated
 from core.auth import get_current_user, is_admin
@@ -80,5 +80,17 @@ async def get_product_details(
             detail=f"Product with ID {product_id} not found."
         )
     return product
+
+
+@router.patch("/{product_id}", response_model=ProductPublic, dependencies=[Depends(is_admin())])
+async def update_existing_product(
+    product_id: int,
+    product_data: ProductUpdate,
+    session: AsyncSession = Depends(get_session),
+):
+    product = await crud_product.get_product_by_id(product_id=product_id, session=session)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found.")
+    return await crud_product.update_product(product=product, data=product_data, session=session)
 
 
